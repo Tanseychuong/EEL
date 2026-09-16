@@ -1,19 +1,16 @@
 """
-EEL — Opportunity Portal
-Database models (Flask-SQLAlchemy / PostgreSQL).
+Empower & Elevate Leaders (EEL) — Database Models (v2: Opportunity Portal)
 
-
-- Any signed-in user can submit an opportunity; it stays PENDING until an
-  admin approves it (moderation queue).
-- Premium status lives on the User (denormalized `is_premium` flag kept in
-  sync by a Subscription record) and drives EARLY/EXCLUSIVE ACCESS:
-    * every approved opportunity gets a `public_release_at` timestamp,
-      `early_access_hours` after approval — premium users can see it the
-      moment it's approved, everyone else waits until that timestamp.
-    * an opportunity can also be marked `premium_only=True` to stay
-      exclusive to premium users indefinitely.
-  `Opportunity.visible_to()` encodes that rule in one place so every
-  endpoint checks visibility the same way.
+Key design decisions:
+- OpportunityCategory is a table, not an enum, so admins can add new
+  opportunity types (e.g. "Fellowship", "Volunteer") without a code change.
+- Moderation state lives directly on Opportunity (status + reviewer fields)
+  rather than a separate audit table, since a single review step doesn't
+  need its own history table yet.
+- Premium "early access" is a time window, not a hard content split:
+  every approved opportunity gets a `published_at` (when premium users can
+  see it) and a `free_access_at` (published_at + EARLY_ACCESS_WINDOW, when
+  free users can see it too). Query filters do the rest — no duplicate data.
 """
 
 from datetime import datetime, timedelta
@@ -25,6 +22,11 @@ from sqlalchemy.dialects.postgresql import UUID
 from werkzeug.security import generate_password_hash, check_password_hash
 
 db = SQLAlchemy()
+
+# How long free users wait after an opportunity is approved before they see it.
+# Premium users see it immediately at approval. Adjust freely — it's read from
+# here in one place (Opportunity.approve()) so the window is easy to tune.
+EARLY_ACCESS_WINDOW = timedelta(hours=48)
 
 
 def gen_uuid():
@@ -40,33 +42,10 @@ class UserRole(enum.Enum):
     ADMIN = "admin"
 
 
-class OpportunityType(enum.Enum):
-    JOB = "job"
-    INTERNSHIP = "internship"
-    SCHOLARSHIP = "scholarship"
-    GRANT = "grant"
-    FELLOWSHIP = "fellowship"
-    COMPETITION = "competition"
-    VOLUNTEER = "volunteer"
-    OTHER = "other"
-
-
 class OpportunityStatus(enum.Enum):
-    PENDING = "pending"
-    APPROVED = "approved"
+    PENDING = "pending"      # awaiting admin review
+    APPROVED = "approved"    # live (subject to early-access window)
     REJECTED = "rejected"
-
-
-class SubscriptionPlan(enum.Enum):
-    MONTHLY = "monthly"
-    YEARLY = "yearly"
-    LIFETIME = "lifetime"
-
-
-class SubscriptionStatus(enum.Enum):
-    ACTIVE = "active"
-    EXPIRED = "expired"
-    CANCELED = "canceled"
 
 
 # ---------------------------------------------------------------------------
@@ -82,26 +61,23 @@ class User(db.Model):
     password_hash = db.Column(db.String(255), nullable=False)
     role = db.Column(db.Enum(UserRole), nullable=False, default=UserRole.USER)
 
-    # Denormalized for fast checks (e.g. `if user.is_premium`) — kept in
-    # sync whenever a Subscription is created/renewed/expired.
-    is_premium = db.Column(db.Boolean, nullable=False, default=False)
-    premium_expires_at = db.Column(db.DateTime)  # null for LIFETIME plans
+    # --- Premium status ------------------------------------------------
+    # Kept as simple fields rather than a subscriptions table for now —
+    # add PremiumSubscription (with payment references) later if/when
+    # billing is wired up. is_premium_active() is the one method that
+    # should be called everywhere else, so that later change is contained.
+    is_premium = db.Column(db.Boolean, default=False, nullable=False)
+    premium_expires_at = db.Column(db.DateTime)
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     opportunities_posted = db.relationship(
-        "Opportunity", back_populates="poster",
-        foreign_keys="Opportunity.poster_id", cascade="all, delete-orphan"
-    )
-    approvals_made = db.relationship(
-        "Opportunity", back_populates="approver",
-        foreign_keys="Opportunity.approved_by"
+        "Opportunity", back_populates="posted_by",
+        foreign_keys="Opportunity.posted_by_id",
+        cascade="all, delete-orphan",
     )
     saved_opportunities = db.relationship(
         "SavedOpportunity", back_populates="user", cascade="all, delete-orphan"
-    )
-    subscriptions = db.relationship(
-        "Subscription", back_populates="user", cascade="all, delete-orphan"
     )
 
     def set_password(self, raw_password: str) -> None:
@@ -113,39 +89,29 @@ class User(db.Model):
     def is_admin(self) -> bool:
         return self.role == UserRole.ADMIN
 
-    def refresh_premium_flag(self) -> None:
-        """Call after touching a subscription to keep is_premium accurate."""
-        active = (
-            db.session.query(Subscription)
-            .filter_by(user_id=self.id, status=SubscriptionStatus.ACTIVE)
-            .filter(
-                db.or_(
-                    Subscription.expires_at.is_(None),          # lifetime
-                    Subscription.expires_at > datetime.utcnow(),
-                )
-            )
-            .first()
-        )
-        self.is_premium = active is not None
-        self.premium_expires_at = active.expires_at if active else None
+    def is_premium_active(self) -> bool:
+        """The single source of truth for 'does this user get early access'."""
+        if not self.is_premium:
+            return False
+        if self.premium_expires_at is None:
+            return True  # no expiry set = indefinite premium (e.g. admin-granted)
+        return self.premium_expires_at > datetime.utcnow()
 
 
 # ---------------------------------------------------------------------------
-# Subscriptions (drive premium status)
+# Opportunity categories (admin-manageable, not hard-coded)
 # ---------------------------------------------------------------------------
 
-class Subscription(db.Model):
-    __tablename__ = "subscriptions"
+class OpportunityCategory(db.Model):
+    __tablename__ = "opportunity_categories"
 
     id = db.Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
-    user_id = db.Column(UUID(as_uuid=False), db.ForeignKey("users.id"), nullable=False)
-    plan = db.Column(db.Enum(SubscriptionPlan), nullable=False)
-    status = db.Column(db.Enum(SubscriptionStatus), nullable=False, default=SubscriptionStatus.ACTIVE)
-    started_at = db.Column(db.DateTime, default=datetime.utcnow)
-    expires_at = db.Column(db.DateTime)  # null for LIFETIME
-    payment_reference = db.Column(db.String(255))  # e.g. Stripe/Paystack charge id
+    slug = db.Column(db.String(50), unique=True, nullable=False)   # 'jobs', 'scholarships'
+    name = db.Column(db.String(120), nullable=False)               # 'Jobs & Internships'
+    description = db.Column(db.Text)
+    is_active = db.Column(db.Boolean, default=True)
 
-    user = db.relationship("User", back_populates="subscriptions")
+    opportunities = db.relationship("Opportunity", back_populates="category")
 
 
 # ---------------------------------------------------------------------------
@@ -157,78 +123,61 @@ class Opportunity(db.Model):
 
     id = db.Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
 
-    poster_id = db.Column(UUID(as_uuid=False), db.ForeignKey("users.id"), nullable=False)
+    posted_by_id = db.Column(UUID(as_uuid=False), db.ForeignKey("users.id"), nullable=False)
+    category_id = db.Column(UUID(as_uuid=False), db.ForeignKey("opportunity_categories.id"), nullable=False)
+
     title = db.Column(db.String(200), nullable=False)
-    description = db.Column(db.Text, nullable=False)
     organization = db.Column(db.String(200))
-    opportunity_type = db.Column(db.Enum(OpportunityType), nullable=False)
-    location = db.Column(db.String(200))
-    is_remote = db.Column(db.Boolean, default=False)
-    deadline = db.Column(db.Date)
-    external_url = db.Column(db.String(500))
+    description = db.Column(db.Text, nullable=False)
+    location = db.Column(db.String(200))                # nullable: remote/unspecified
+    opportunity_url = db.Column(db.String(500))          # external application link
+    application_deadline = db.Column(db.DateTime)
 
-    # --- Moderation -----------------------------------------------------
+    # --- Moderation ------------------------------------------------------
     status = db.Column(db.Enum(OpportunityStatus), nullable=False, default=OpportunityStatus.PENDING)
+    submitted_at = db.Column(db.DateTime, default=datetime.utcnow)
+    reviewed_by_id = db.Column(UUID(as_uuid=False), db.ForeignKey("users.id"))
+    reviewed_at = db.Column(db.DateTime)
     rejection_reason = db.Column(db.Text)
-    approved_by = db.Column(UUID(as_uuid=False), db.ForeignKey("users.id"))
-    approved_at = db.Column(db.DateTime)
 
-    # --- Premium access ---------------------------------------------------
-    premium_only = db.Column(db.Boolean, nullable=False, default=False)
-    early_access_hours = db.Column(db.Integer, nullable=False, default=24)
-    public_release_at = db.Column(db.DateTime)  # set when approved
+    # --- Premium early access ---------------------------------------------
+    published_at = db.Column(db.DateTime)      # set on approval; premium sees it now
+    free_access_at = db.Column(db.DateTime)    # published_at + EARLY_ACCESS_WINDOW
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    posted_by = db.relationship("User", back_populates="opportunities_posted", foreign_keys=[posted_by_id])
+    reviewed_by = db.relationship("User", foreign_keys=[reviewed_by_id])
+    category = db.relationship("OpportunityCategory", back_populates="opportunities")
+    saved_by = db.relationship("SavedOpportunity", back_populates="opportunity", cascade="all, delete-orphan")
 
-    poster = db.relationship("User", back_populates="opportunities_posted", foreign_keys=[poster_id])
-    approver = db.relationship("User", back_populates="approvals_made", foreign_keys=[approved_by])
-    saves = db.relationship("SavedOpportunity", back_populates="opportunity", cascade="all, delete-orphan")
-    tags = db.relationship("Tag", secondary="opportunity_tags", back_populates="opportunities")
-
-    # -- Moderation actions -------------------------------------------------
-    def approve(self, admin: "User") -> None:
+    def approve(self, admin_user: "User") -> None:
+        """Admin approves a pending opportunity: goes live for premium users now,
+        and for free users after EARLY_ACCESS_WINDOW."""
+        now = datetime.utcnow()
         self.status = OpportunityStatus.APPROVED
-        self.approved_by = admin.id
-        self.approved_at = datetime.utcnow()
-        self.public_release_at = self.approved_at + timedelta(hours=self.early_access_hours)
+        self.reviewed_by_id = admin_user.id
+        self.reviewed_at = now
+        self.published_at = now
+        self.free_access_at = now + EARLY_ACCESS_WINDOW
 
-    def reject(self, admin: "User", reason: str = "") -> None:
+    def reject(self, admin_user: "User", reason: str) -> None:
         self.status = OpportunityStatus.REJECTED
-        self.approved_by = admin.id
-        self.approved_at = datetime.utcnow()
+        self.reviewed_by_id = admin_user.id
+        self.reviewed_at = datetime.utcnow()
         self.rejection_reason = reason
 
-    # -- Visibility rule: the one place premium access is decided -----------
-    def visible_to(self, user: "User" = None, now: datetime = None) -> bool:
+    def is_visible_to(self, user: "User") -> bool:
+        """Approval + access-window check in one place, so every endpoint
+        that lists opportunities applies the same rule."""
         if self.status != OpportunityStatus.APPROVED:
             return False
-        now = now or datetime.utcnow()
-        if user is not None and user.is_premium:
-            return True
-        if self.premium_only:
-            return False
-        return self.public_release_at is not None and now >= self.public_release_at
-
-
-class Tag(db.Model):
-    __tablename__ = "tags"
-
-    id = db.Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
-    name = db.Column(db.String(80), unique=True, nullable=False)
-
-    opportunities = db.relationship("Opportunity", secondary="opportunity_tags", back_populates="tags")
-
-
-opportunity_tags = db.Table(
-    "opportunity_tags",
-    db.Column("opportunity_id", UUID(as_uuid=False), db.ForeignKey("opportunities.id"), primary_key=True),
-    db.Column("tag_id", UUID(as_uuid=False), db.ForeignKey("tags.id"), primary_key=True),
-)
+        now = datetime.utcnow()
+        if user.is_premium_active():
+            return self.published_at is not None and self.published_at <= now
+        return self.free_access_at is not None and self.free_access_at <= now
 
 
 class SavedOpportunity(db.Model):
-    """A user bookmarking an opportunity for later."""
+    """A user bookmarking an opportunity to revisit later."""
     __tablename__ = "saved_opportunities"
 
     id = db.Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
@@ -237,7 +186,7 @@ class SavedOpportunity(db.Model):
     saved_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     user = db.relationship("User", back_populates="saved_opportunities")
-    opportunity = db.relationship("Opportunity", back_populates="saves")
+    opportunity = db.relationship("Opportunity", back_populates="saved_by")
 
     __table_args__ = (
         db.UniqueConstraint("user_id", "opportunity_id", name="uq_saved_user_opportunity"),
