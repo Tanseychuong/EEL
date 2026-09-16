@@ -1,17 +1,22 @@
 """
-Empower & Elevate Leaders (EEL) — Database Models
-Flask-SQLAlchemy models for PostgreSQL.
+EEL — Opportunity Portal
+Database models (Flask-SQLAlchemy / PostgreSQL).
 
-Design principles:
-- Content (pillars, modules, lessons, quizzes) lives in the DB, not in code,
-  so admins can add/edit curriculum without touching the frontend.
-- Progress is tracked at three granularities: lesson, module, and pillar
-  (via certificates), so the dashboard can show fine-grained % complete.
-- Quiz answers are stored per-attempt so learners can retake quizzes and
-  admins can see quiz performance analytics.
+
+- Any signed-in user can submit an opportunity; it stays PENDING until an
+  admin approves it (moderation queue).
+- Premium status lives on the User (denormalized `is_premium` flag kept in
+  sync by a Subscription record) and drives EARLY/EXCLUSIVE ACCESS:
+    * every approved opportunity gets a `public_release_at` timestamp,
+      `early_access_hours` after approval — premium users can see it the
+      moment it's approved, everyone else waits until that timestamp.
+    * an opportunity can also be marked `premium_only=True` to stay
+      exclusive to premium users indefinitely.
+  `Opportunity.visible_to()` encodes that rule in one place so every
+  endpoint checks visibility the same way.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 import enum
 import uuid
 
@@ -31,27 +36,37 @@ def gen_uuid():
 # ---------------------------------------------------------------------------
 
 class UserRole(enum.Enum):
-    LEARNER = "learner"
+    USER = "user"
     ADMIN = "admin"
 
 
-class LessonContentType(enum.Enum):
-    READING = "reading"
-    VIDEO = "video"
-    SCENARIO = "scenario"
-    DISCUSSION = "discussion"
+class OpportunityType(enum.Enum):
+    JOB = "job"
+    INTERNSHIP = "internship"
+    SCHOLARSHIP = "scholarship"
+    GRANT = "grant"
+    FELLOWSHIP = "fellowship"
+    COMPETITION = "competition"
+    VOLUNTEER = "volunteer"
+    OTHER = "other"
 
 
-class ProgressStatus(enum.Enum):
-    LOCKED = "locked"
-    UNLOCKED = "unlocked"
-    IN_PROGRESS = "in_progress"
-    COMPLETED = "completed"
+class OpportunityStatus(enum.Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
 
 
-class QuestionType(enum.Enum):
-    MULTIPLE_CHOICE = "multiple_choice"
-    REFLECTION = "reflection"  # free-text, ungraded
+class SubscriptionPlan(enum.Enum):
+    MONTHLY = "monthly"
+    YEARLY = "yearly"
+    LIFETIME = "lifetime"
+
+
+class SubscriptionStatus(enum.Enum):
+    ACTIVE = "active"
+    EXPIRED = "expired"
+    CANCELED = "canceled"
 
 
 # ---------------------------------------------------------------------------
@@ -65,14 +80,29 @@ class User(db.Model):
     name = db.Column(db.String(120), nullable=False)
     email = db.Column(db.String(255), unique=True, nullable=False, index=True)
     password_hash = db.Column(db.String(255), nullable=False)
-    role = db.Column(db.Enum(UserRole), nullable=False, default=UserRole.LEARNER)
+    role = db.Column(db.Enum(UserRole), nullable=False, default=UserRole.USER)
+
+    # Denormalized for fast checks (e.g. `if user.is_premium`) — kept in
+    # sync whenever a Subscription is created/renewed/expired.
+    is_premium = db.Column(db.Boolean, nullable=False, default=False)
+    premium_expires_at = db.Column(db.DateTime)  # null for LIFETIME plans
+
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    enrollments = db.relationship("Enrollment", back_populates="user", cascade="all, delete-orphan")
-    module_progress = db.relationship("ModuleProgress", back_populates="user", cascade="all, delete-orphan")
-    lesson_progress = db.relationship("LessonProgress", back_populates="user", cascade="all, delete-orphan")
-    quiz_attempts = db.relationship("QuizAttempt", back_populates="user", cascade="all, delete-orphan")
-    certificates = db.relationship("Certificate", back_populates="user", cascade="all, delete-orphan")
+    opportunities_posted = db.relationship(
+        "Opportunity", back_populates="poster",
+        foreign_keys="Opportunity.poster_id", cascade="all, delete-orphan"
+    )
+    approvals_made = db.relationship(
+        "Opportunity", back_populates="approver",
+        foreign_keys="Opportunity.approved_by"
+    )
+    saved_opportunities = db.relationship(
+        "SavedOpportunity", back_populates="user", cascade="all, delete-orphan"
+    )
+    subscriptions = db.relationship(
+        "Subscription", back_populates="user", cascade="all, delete-orphan"
+    )
 
     def set_password(self, raw_password: str) -> None:
         self.password_hash = generate_password_hash(raw_password)
@@ -83,219 +113,132 @@ class User(db.Model):
     def is_admin(self) -> bool:
         return self.role == UserRole.ADMIN
 
+    def refresh_premium_flag(self) -> None:
+        """Call after touching a subscription to keep is_premium accurate."""
+        active = (
+            db.session.query(Subscription)
+            .filter_by(user_id=self.id, status=SubscriptionStatus.ACTIVE)
+            .filter(
+                db.or_(
+                    Subscription.expires_at.is_(None),          # lifetime
+                    Subscription.expires_at > datetime.utcnow(),
+                )
+            )
+            .first()
+        )
+        self.is_premium = active is not None
+        self.premium_expires_at = active.expires_at if active else None
+
 
 # ---------------------------------------------------------------------------
-# Curriculum structure: Pillar -> Module -> Lesson
-#                                       -> Quiz -> Question -> Choice
+# Subscriptions (drive premium status)
 # ---------------------------------------------------------------------------
 
-class Pillar(db.Model):
-    """A learning track: LEAD, ETHICS, GLOBAL, etc."""
-    __tablename__ = "pillars"
+class Subscription(db.Model):
+    __tablename__ = "subscriptions"
 
     id = db.Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
-    slug = db.Column(db.String(50), unique=True, nullable=False)  # 'lead', 'ethics', 'global'
-    name = db.Column(db.String(120), nullable=False)              # 'Leadership'
-    description = db.Column(db.Text)
-    order = db.Column(db.Integer, nullable=False, default=0)
-    is_published = db.Column(db.Boolean, default=False)
+    user_id = db.Column(UUID(as_uuid=False), db.ForeignKey("users.id"), nullable=False)
+    plan = db.Column(db.Enum(SubscriptionPlan), nullable=False)
+    status = db.Column(db.Enum(SubscriptionStatus), nullable=False, default=SubscriptionStatus.ACTIVE)
+    started_at = db.Column(db.DateTime, default=datetime.utcnow)
+    expires_at = db.Column(db.DateTime)  # null for LIFETIME
+    payment_reference = db.Column(db.String(255))  # e.g. Stripe/Paystack charge id
 
-    modules = db.relationship(
-        "Module", back_populates="pillar",
-        order_by="Module.order", cascade="all, delete-orphan"
-    )
-    enrollments = db.relationship("Enrollment", back_populates="pillar")
-    certificates = db.relationship("Certificate", back_populates="pillar")
+    user = db.relationship("User", back_populates="subscriptions")
 
 
-class Module(db.Model):
-    __tablename__ = "modules"
+# ---------------------------------------------------------------------------
+# Opportunities
+# ---------------------------------------------------------------------------
+
+class Opportunity(db.Model):
+    __tablename__ = "opportunities"
 
     id = db.Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
-    pillar_id = db.Column(UUID(as_uuid=False), db.ForeignKey("pillars.id"), nullable=False)
-    slug = db.Column(db.String(80), nullable=False)
-    title = db.Column(db.String(200), nullable=False)   # 'Understanding Leadership'
-    description = db.Column(db.Text)
-    order = db.Column(db.Integer, nullable=False, default=0)
-    is_published = db.Column(db.Boolean, default=False)
+
+    poster_id = db.Column(UUID(as_uuid=False), db.ForeignKey("users.id"), nullable=False)
+    title = db.Column(db.String(200), nullable=False)
+    description = db.Column(db.Text, nullable=False)
+    organization = db.Column(db.String(200))
+    opportunity_type = db.Column(db.Enum(OpportunityType), nullable=False)
+    location = db.Column(db.String(200))
+    is_remote = db.Column(db.Boolean, default=False)
+    deadline = db.Column(db.Date)
+    external_url = db.Column(db.String(500))
+
+    # --- Moderation -----------------------------------------------------
+    status = db.Column(db.Enum(OpportunityStatus), nullable=False, default=OpportunityStatus.PENDING)
+    rejection_reason = db.Column(db.Text)
+    approved_by = db.Column(UUID(as_uuid=False), db.ForeignKey("users.id"))
+    approved_at = db.Column(db.DateTime)
+
+    # --- Premium access ---------------------------------------------------
+    premium_only = db.Column(db.Boolean, nullable=False, default=False)
+    early_access_hours = db.Column(db.Integer, nullable=False, default=24)
+    public_release_at = db.Column(db.DateTime)  # set when approved
+
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    pillar = db.relationship("Pillar", back_populates="modules")
-    lessons = db.relationship(
-        "Lesson", back_populates="module",
-        order_by="Lesson.order", cascade="all, delete-orphan"
-    )
-    quizzes = db.relationship("Quiz", back_populates="module", cascade="all, delete-orphan")
-    progress_records = db.relationship("ModuleProgress", back_populates="module")
+    poster = db.relationship("User", back_populates="opportunities_posted", foreign_keys=[poster_id])
+    approver = db.relationship("User", back_populates="approvals_made", foreign_keys=[approved_by])
+    saves = db.relationship("SavedOpportunity", back_populates="opportunity", cascade="all, delete-orphan")
+    tags = db.relationship("Tag", secondary="opportunity_tags", back_populates="opportunities")
 
-    __table_args__ = (
-        db.UniqueConstraint("pillar_id", "slug", name="uq_module_pillar_slug"),
-    )
+    # -- Moderation actions -------------------------------------------------
+    def approve(self, admin: "User") -> None:
+        self.status = OpportunityStatus.APPROVED
+        self.approved_by = admin.id
+        self.approved_at = datetime.utcnow()
+        self.public_release_at = self.approved_at + timedelta(hours=self.early_access_hours)
 
+    def reject(self, admin: "User", reason: str = "") -> None:
+        self.status = OpportunityStatus.REJECTED
+        self.approved_by = admin.id
+        self.approved_at = datetime.utcnow()
+        self.rejection_reason = reason
 
-class Lesson(db.Model):
-    __tablename__ = "lessons"
-
-    id = db.Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
-    module_id = db.Column(UUID(as_uuid=False), db.ForeignKey("modules.id"), nullable=False)
-    title = db.Column(db.String(200), nullable=False)
-    content_type = db.Column(db.Enum(LessonContentType), nullable=False, default=LessonContentType.READING)
-    content = db.Column(db.Text)          # markdown/html body, or a scenario prompt
-    video_url = db.Column(db.String(500))  # nullable, used when content_type == VIDEO
-    order = db.Column(db.Integer, nullable=False, default=0)
-
-    module = db.relationship("Module", back_populates="lessons")
-    progress_records = db.relationship("LessonProgress", back_populates="lesson")
-
-
-class Quiz(db.Model):
-    __tablename__ = "quizzes"
-
-    id = db.Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
-    module_id = db.Column(UUID(as_uuid=False), db.ForeignKey("modules.id"), nullable=False)
-    title = db.Column(db.String(200), nullable=False)
-    passing_score = db.Column(db.Integer, default=70)  # percentage required to mark module complete
-
-    module = db.relationship("Module", back_populates="quizzes")
-    questions = db.relationship(
-        "Question", back_populates="quiz",
-        order_by="Question.order", cascade="all, delete-orphan"
-    )
-    attempts = db.relationship("QuizAttempt", back_populates="quiz", cascade="all, delete-orphan")
+    # -- Visibility rule: the one place premium access is decided -----------
+    def visible_to(self, user: "User" = None, now: datetime = None) -> bool:
+        if self.status != OpportunityStatus.APPROVED:
+            return False
+        now = now or datetime.utcnow()
+        if user is not None and user.is_premium:
+            return True
+        if self.premium_only:
+            return False
+        return self.public_release_at is not None and now >= self.public_release_at
 
 
-class Question(db.Model):
-    __tablename__ = "questions"
+class Tag(db.Model):
+    __tablename__ = "tags"
 
     id = db.Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
-    quiz_id = db.Column(UUID(as_uuid=False), db.ForeignKey("quizzes.id"), nullable=False)
-    prompt = db.Column(db.Text, nullable=False)  # e.g. "You are leading a student organization..."
-    question_type = db.Column(db.Enum(QuestionType), nullable=False, default=QuestionType.MULTIPLE_CHOICE)
-    order = db.Column(db.Integer, nullable=False, default=0)
+    name = db.Column(db.String(80), unique=True, nullable=False)
 
-    quiz = db.relationship("Quiz", back_populates="questions")
-    choices = db.relationship(
-        "Choice", back_populates="question",
-        order_by="Choice.order", cascade="all, delete-orphan"
-    )
+    opportunities = db.relationship("Opportunity", secondary="opportunity_tags", back_populates="tags")
 
 
-class Choice(db.Model):
-    __tablename__ = "choices"
-
-    id = db.Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
-    question_id = db.Column(UUID(as_uuid=False), db.ForeignKey("questions.id"), nullable=False)
-    text = db.Column(db.Text, nullable=False)          # 'Investigate fairly and apply the same standard...'
-    is_correct = db.Column(db.Boolean, default=False)
-    explanation = db.Column(db.Text)                   # shown after answering, why it's right/wrong
-    order = db.Column(db.Integer, nullable=False, default=0)
-
-    question = db.relationship("Question", back_populates="choices")
+opportunity_tags = db.Table(
+    "opportunity_tags",
+    db.Column("opportunity_id", UUID(as_uuid=False), db.ForeignKey("opportunities.id"), primary_key=True),
+    db.Column("tag_id", UUID(as_uuid=False), db.ForeignKey("tags.id"), primary_key=True),
+)
 
 
-# ---------------------------------------------------------------------------
-# Enrollment & Progress tracking
-# ---------------------------------------------------------------------------
-
-class Enrollment(db.Model):
-    """A learner opting into a pillar (learning track)."""
-    __tablename__ = "enrollments"
+class SavedOpportunity(db.Model):
+    """A user bookmarking an opportunity for later."""
+    __tablename__ = "saved_opportunities"
 
     id = db.Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
     user_id = db.Column(UUID(as_uuid=False), db.ForeignKey("users.id"), nullable=False)
-    pillar_id = db.Column(UUID(as_uuid=False), db.ForeignKey("pillars.id"), nullable=False)
-    enrolled_at = db.Column(db.DateTime, default=datetime.utcnow)
+    opportunity_id = db.Column(UUID(as_uuid=False), db.ForeignKey("opportunities.id"), nullable=False)
+    saved_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    user = db.relationship("User", back_populates="enrollments")
-    pillar = db.relationship("Pillar", back_populates="enrollments")
-
-    __table_args__ = (
-        db.UniqueConstraint("user_id", "pillar_id", name="uq_enrollment_user_pillar"),
-    )
-
-
-class ModuleProgress(db.Model):
-    __tablename__ = "module_progress"
-
-    id = db.Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
-    user_id = db.Column(UUID(as_uuid=False), db.ForeignKey("users.id"), nullable=False)
-    module_id = db.Column(UUID(as_uuid=False), db.ForeignKey("modules.id"), nullable=False)
-    status = db.Column(db.Enum(ProgressStatus), nullable=False, default=ProgressStatus.LOCKED)
-    started_at = db.Column(db.DateTime)
-    completed_at = db.Column(db.DateTime)
-
-    user = db.relationship("User", back_populates="module_progress")
-    module = db.relationship("Module", back_populates="progress_records")
+    user = db.relationship("User", back_populates="saved_opportunities")
+    opportunity = db.relationship("Opportunity", back_populates="saves")
 
     __table_args__ = (
-        db.UniqueConstraint("user_id", "module_id", name="uq_progress_user_module"),
-    )
-
-
-class LessonProgress(db.Model):
-    __tablename__ = "lesson_progress"
-
-    id = db.Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
-    user_id = db.Column(UUID(as_uuid=False), db.ForeignKey("users.id"), nullable=False)
-    lesson_id = db.Column(UUID(as_uuid=False), db.ForeignKey("lessons.id"), nullable=False)
-    completed_at = db.Column(db.DateTime)
-
-    user = db.relationship("User", back_populates="lesson_progress")
-    lesson = db.relationship("Lesson", back_populates="progress_records")
-
-    __table_args__ = (
-        db.UniqueConstraint("user_id", "lesson_id", name="uq_progress_user_lesson"),
-    )
-
-
-class QuizAttempt(db.Model):
-    __tablename__ = "quiz_attempts"
-
-    id = db.Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
-    user_id = db.Column(UUID(as_uuid=False), db.ForeignKey("users.id"), nullable=False)
-    quiz_id = db.Column(UUID(as_uuid=False), db.ForeignKey("quizzes.id"), nullable=False)
-    score = db.Column(db.Integer)  # percentage, 0-100
-    passed = db.Column(db.Boolean, default=False)
-    started_at = db.Column(db.DateTime, default=datetime.utcnow)
-    completed_at = db.Column(db.DateTime)
-
-    user = db.relationship("User", back_populates="quiz_attempts")
-    quiz = db.relationship("Quiz", back_populates="attempts")
-    answers = db.relationship("QuizAnswer", back_populates="attempt", cascade="all, delete-orphan")
-
-
-class QuizAnswer(db.Model):
-    __tablename__ = "quiz_answers"
-
-    id = db.Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
-    attempt_id = db.Column(UUID(as_uuid=False), db.ForeignKey("quiz_attempts.id"), nullable=False)
-    question_id = db.Column(UUID(as_uuid=False), db.ForeignKey("questions.id"), nullable=False)
-    choice_id = db.Column(UUID(as_uuid=False), db.ForeignKey("choices.id"))  # null for reflection questions
-    is_correct = db.Column(db.Boolean)
-
-    attempt = db.relationship("QuizAttempt", back_populates="answers")
-    question = db.relationship("Question")
-    choice = db.relationship("Choice")
-
-
-# ---------------------------------------------------------------------------
-# Certificates
-# ---------------------------------------------------------------------------
-
-class Certificate(db.Model):
-    """Issued when a learner completes every module in a pillar."""
-    __tablename__ = "certificates"
-
-    id = db.Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
-    user_id = db.Column(UUID(as_uuid=False), db.ForeignKey("users.id"), nullable=False)
-    pillar_id = db.Column(UUID(as_uuid=False), db.ForeignKey("pillars.id"), nullable=False)
-    issued_at = db.Column(db.DateTime, default=datetime.utcnow)
-    certificate_url = db.Column(db.String(500))  # link to generated PDF, if you generate one
-
-    user = db.relationship("User", back_populates="certificates")
-    pillar = db.relationship("Pillar", back_populates="certificates")
-
-    __table_args__ = (
-        db.UniqueConstraint("user_id", "pillar_id", name="uq_certificate_user_pillar"),
+        db.UniqueConstraint("user_id", "opportunity_id", name="uq_saved_user_opportunity"),
     )
