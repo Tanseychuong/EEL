@@ -1,31 +1,39 @@
 """
-Empower & Elevate Leaders (EEL) — Database Models (v2: Opportunity Portal)
+Empower & Elevate Leaders (EEL) — Database Models (Opportunity Portal)
 
-Key design decisions:
+Users post opportunities (jobs, internships, scholarships, grants, etc.),
+admins approve them before they go live, and premium users get early access
+to newly-approved listings before free users do.
+
+Design decisions:
 - OpportunityCategory is a table, not an enum, so admins can add new
-  opportunity types (e.g. "Fellowship", "Volunteer") without a code change.
+  opportunity types without a code change.
 - Moderation state lives directly on Opportunity (status + reviewer fields)
-  rather than a separate audit table, since a single review step doesn't
-  need its own history table yet.
-- Premium "early access" is a time window, not a hard content split:
-  every approved opportunity gets a `published_at` (when premium users can
-  see it) and a `free_access_at` (published_at + EARLY_ACCESS_WINDOW, when
-  free users can see it too). Query filters do the rest — no duplicate data.
+  rather than a separate audit table — one review step doesn't need its own
+  history table yet.
+- Premium "early access" is a time window, not a hard content split: every
+  approved opportunity gets published_at (premium sees it now) and
+  free_access_at (published_at + EARLY_ACCESS_WINDOW, when free users can
+  see it too). is_visible_to() is the one place that rule lives.
+- Indexes are added on every column that list/filter/admin-queue queries
+  will actually filter or sort by — added now, not retrofitted later,
+  since adding them to a live table with real data is a slower migration.
 """
 
 from datetime import datetime, timedelta
 import enum
 import uuid
 
-from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Index
 from werkzeug.security import generate_password_hash, check_password_hash
 
-db = SQLAlchemy()
+from app.extensions import db
 
-# How long free users wait after an opportunity is approved before they see it.
-# Premium users see it immediately at approval. Adjust freely — it's read from
-# here in one place (Opportunity.approve()) so the window is easy to tune.
+# How long free users wait after an opportunity is approved before they see
+# it. Premium users see it immediately at approval. Also exposed as
+# config.EARLY_ACCESS_HOURS — keep the two in sync, or read this from config
+# in approve() if you want it adjustable without a deploy.
 EARLY_ACCESS_WINDOW = timedelta(hours=48)
 
 
@@ -59,17 +67,16 @@ class User(db.Model):
     name = db.Column(db.String(120), nullable=False)
     email = db.Column(db.String(255), unique=True, nullable=False, index=True)
     password_hash = db.Column(db.String(255), nullable=False)
-    role = db.Column(db.Enum(UserRole), nullable=False, default=UserRole.USER)
+    role = db.Column(db.Enum(UserRole), nullable=False, default=UserRole.USER, index=True)
 
-    # --- Premium status ------------------------------------------------
-    # Kept as simple fields rather than a subscriptions table for now —
-    # add PremiumSubscription (with payment references) later if/when
-    # billing is wired up. is_premium_active() is the one method that
-    # should be called everywhere else, so that later change is contained.
-    is_premium = db.Column(db.Boolean, default=False, nullable=False)
+    # Premium status kept as simple fields rather than a subscriptions table
+    # for now — add PremiumSubscription (with payment references) later if/
+    # when billing is wired up. is_premium_active() is the one method that
+    # should be called everywhere else, so that later change stays contained.
+    is_premium = db.Column(db.Boolean, default=False, nullable=False, index=True)
     premium_expires_at = db.Column(db.DateTime)
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, server_default=db.func.now())
 
     opportunities_posted = db.relationship(
         "Opportunity", back_populates="posted_by",
@@ -97,6 +104,15 @@ class User(db.Model):
             return True  # no expiry set = indefinite premium (e.g. admin-granted)
         return self.premium_expires_at > datetime.utcnow()
 
+    def to_public_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "name": self.name,
+            "email": self.email,
+            "role": self.role.value,
+            "is_premium": self.is_premium_active(),
+        }
+
 
 # ---------------------------------------------------------------------------
 # Opportunity categories (admin-manageable, not hard-coded)
@@ -109,7 +125,7 @@ class OpportunityCategory(db.Model):
     slug = db.Column(db.String(50), unique=True, nullable=False)   # 'jobs', 'scholarships'
     name = db.Column(db.String(120), nullable=False)               # 'Jobs & Internships'
     description = db.Column(db.Text)
-    is_active = db.Column(db.Boolean, default=True)
+    is_active = db.Column(db.Boolean, default=True, index=True)
 
     opportunities = db.relationship("Opportunity", back_populates="category")
 
@@ -123,35 +139,44 @@ class Opportunity(db.Model):
 
     id = db.Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
 
-    posted_by_id = db.Column(UUID(as_uuid=False), db.ForeignKey("users.id"), nullable=False)
-    category_id = db.Column(UUID(as_uuid=False), db.ForeignKey("opportunity_categories.id"), nullable=False)
+    posted_by_id = db.Column(UUID(as_uuid=False), db.ForeignKey("users.id"), nullable=False, index=True)
+    category_id = db.Column(UUID(as_uuid=False), db.ForeignKey("opportunity_categories.id"), nullable=False, index=True)
 
     title = db.Column(db.String(200), nullable=False)
     organization = db.Column(db.String(200))
     description = db.Column(db.Text, nullable=False)
     location = db.Column(db.String(200))                # nullable: remote/unspecified
     opportunity_url = db.Column(db.String(500))          # external application link
-    application_deadline = db.Column(db.DateTime)
+    application_deadline = db.Column(db.DateTime, index=True)
 
     # --- Moderation ------------------------------------------------------
-    status = db.Column(db.Enum(OpportunityStatus), nullable=False, default=OpportunityStatus.PENDING)
-    submitted_at = db.Column(db.DateTime, default=datetime.utcnow)
+    status = db.Column(db.Enum(OpportunityStatus), nullable=False, default=OpportunityStatus.PENDING, index=True)
+    submitted_at = db.Column(db.DateTime, server_default=db.func.now())
     reviewed_by_id = db.Column(UUID(as_uuid=False), db.ForeignKey("users.id"))
     reviewed_at = db.Column(db.DateTime)
     rejection_reason = db.Column(db.Text)
 
     # --- Premium early access ---------------------------------------------
-    published_at = db.Column(db.DateTime)      # set on approval; premium sees it now
-    free_access_at = db.Column(db.DateTime)    # published_at + EARLY_ACCESS_WINDOW
+    published_at = db.Column(db.DateTime, index=True)      # set on approval; premium sees it now
+    free_access_at = db.Column(db.DateTime, index=True)    # published_at + EARLY_ACCESS_WINDOW
 
     posted_by = db.relationship("User", back_populates="opportunities_posted", foreign_keys=[posted_by_id])
     reviewed_by = db.relationship("User", foreign_keys=[reviewed_by_id])
     category = db.relationship("OpportunityCategory", back_populates="opportunities")
     saved_by = db.relationship("SavedOpportunity", back_populates="opportunity", cascade="all, delete-orphan")
 
+    # Composite indexes matching the actual list-page queries:
+    # "approved opportunities in category X, newest first" and
+    # "approved opportunities visible to free users, newest first".
+    __table_args__ = (
+        Index("ix_opportunities_status_category", "status", "category_id"),
+        Index("ix_opportunities_status_free_access", "status", "free_access_at"),
+        Index("ix_opportunities_status_published", "status", "published_at"),
+    )
+
     def approve(self, admin_user: "User") -> None:
-        """Admin approves a pending opportunity: goes live for premium users now,
-        and for free users after EARLY_ACCESS_WINDOW."""
+        """Admin approves a pending opportunity: goes live for premium users
+        now, and for free users after EARLY_ACCESS_WINDOW."""
         now = datetime.utcnow()
         self.status = OpportunityStatus.APPROVED
         self.reviewed_by_id = admin_user.id
@@ -175,15 +200,26 @@ class Opportunity(db.Model):
             return self.published_at is not None and self.published_at <= now
         return self.free_access_at is not None and self.free_access_at <= now
 
+    @staticmethod
+    def visible_query_for(user: "User"):
+        """Returns a SQLAlchemy query filter (not a Python-side check) for
+        listing endpoints, so visibility filtering happens in the database
+        and stays index-backed instead of loading every row to check it."""
+        now = datetime.utcnow()
+        base = Opportunity.query.filter(Opportunity.status == OpportunityStatus.APPROVED)
+        if user is not None and user.is_premium_active():
+            return base.filter(Opportunity.published_at <= now)
+        return base.filter(Opportunity.free_access_at <= now)
+
 
 class SavedOpportunity(db.Model):
     """A user bookmarking an opportunity to revisit later."""
     __tablename__ = "saved_opportunities"
 
     id = db.Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
-    user_id = db.Column(UUID(as_uuid=False), db.ForeignKey("users.id"), nullable=False)
-    opportunity_id = db.Column(UUID(as_uuid=False), db.ForeignKey("opportunities.id"), nullable=False)
-    saved_at = db.Column(db.DateTime, default=datetime.utcnow)
+    user_id = db.Column(UUID(as_uuid=False), db.ForeignKey("users.id"), nullable=False, index=True)
+    opportunity_id = db.Column(UUID(as_uuid=False), db.ForeignKey("opportunities.id"), nullable=False, index=True)
+    saved_at = db.Column(db.DateTime, server_default=db.func.now())
 
     user = db.relationship("User", back_populates="saved_opportunities")
     opportunity = db.relationship("Opportunity", back_populates="saved_by")
