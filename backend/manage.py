@@ -1,21 +1,22 @@
 #!/usr/bin/env python
-"""
-Standard management entry point.
+"""Django's management entry point."""
 
-    python manage.py run                          # dev server
-    python manage.py db init / migrate / upgrade   # Flask-Migrate (Alembic)
-    python manage.py create-admin                  # bootstrap the first admin
-    python manage.py list-pending                  # moderation queue, CLI-side
-    python manage.py grant-premium user@example.com
+import os
+import sys
 
-This works because app.cli is Flask's own click Group — calling it runs
-the full set of built-in + extension + custom commands with the app
-context already handled, so nothing here needs FLASK_APP set separately.
-"""
 
-from apps import create_app
+def main():
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
+    try:
+        from django.core.management import execute_from_command_line
+    except ImportError as exc:
+        raise ImportError(
+            "Couldn't import Django. Are you sure it's installed and "
+            "available on your PYTHONPATH environment variable? Did you "
+            "forget to activate a virtual environment?"
+        ) from exc
+    execute_from_command_line(sys.argv)
 
-app = create_app()
 
 if __name__ == "__main__":
-    app.cli()
+    main()
