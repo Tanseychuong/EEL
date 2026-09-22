@@ -8,7 +8,7 @@ import logging
 
 from flask import Flask, jsonify
 
-from config import config_by_name
+from backend.config.config import config_by_name
 from apps.extensions import db, migrate, jwt, cors, limiter
 
 
