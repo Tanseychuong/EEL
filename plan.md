@@ -47,6 +47,67 @@ backend/
 └── .env.example
 ```
 
+
+backend/
+├── manage.py                          ✅
+│
+├── config/
+│   ├── __init__.py                    ✅
+│   ├── settings.py                    ✅
+│   ├── urls.py                        ✅
+│   ├── wsgi.py                        ✅
+│   └── asgi.py                        ✅
+│
+├── apps/
+│   ├── __init__.py                    ⏳
+│   │
+│   ├── accounts/                      ⏳  Step 2
+│   │   ├── __init__.py                ⏳
+│   │   ├── models.py                  ⏳
+│   │   ├── admin.py                   ⏳
+│   │   ├── serializers.py             ⏳
+│   │   ├── views.py                   ⏳
+│   │   ├── urls.py                    ⏳
+│   │   └── migrations/                🔧
+│   │
+│   ├── opportunities/                 ⏳  Step 3
+│   │   ├── __init__.py                ⏳
+│   │   ├── models.py                  ⏳
+│   │   ├── admin.py                   ⏳
+│   │   ├── permissions.py             ⏳
+│   │   ├── serializers.py             ⏳
+│   │   ├── views.py                   ⏳
+│   │   ├── urls.py                    ⏳
+│   │   └── migrations/                🔧
+│   │
+│   └── ingestion/                     ⏳  Step 4
+│       ├── __init__.py                ⏳
+│       ├── models.py                  ⏳
+│       ├── admin.py                   ⏳
+│       ├── urls.py                    ⏳
+│       ├── connectors/
+│       │   ├── __init__.py            ⏳
+│       │   ├── base.py                ⏳
+│       │   └── rss_connector.py       ⏳
+│       ├── management/
+│       │   └── commands/
+│       │       └── fetch_opportunities.py  ⏳
+│       └── migrations/                🔧
+│
+├── tests/                              ⏳  Step 5
+│   ├── conftest.py                    ⏳
+│   ├── test_accounts.py               ⏳
+│   ├── test_opportunities.py          ⏳
+│   └── test_ingestion.py              ⏳
+│
+├── docs/
+│   ├── PLAN.md                        ✅
+│   └── schema.sql                     ⏳
+│
+├── requirements.txt                   ✅
+└── .env.example                       ✅
+
+
 **What's changing and why:**
 - `content/` → `opportunities/`, `progress/` retired in favor of a smaller `saved/` blueprint (bookmarking is the only thing `progress` ever needed to do post-pivot — no reason to keep the old name or the extra surface area).
 - `services.py` inside `opportunities/` — route handlers should stay thin (parse request → call service → serialize response). Business logic like "is this submission complete enough to go to review" or "apply the visibility filter" lives in one testable place instead of being copy-pasted across route functions as the API grows.
