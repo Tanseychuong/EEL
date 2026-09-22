@@ -13,7 +13,7 @@ platform day-to-day — not one-off dev scripts (that's what seed.py is for).
 import click
 from flask.cli import with_appcontext
 
-from app.extensions import db
+from apps.extensions import db
 from models import User, UserRole, Opportunity, OpportunityStatus
 
 

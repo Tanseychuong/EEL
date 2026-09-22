@@ -6,8 +6,8 @@ import cleanly under TestingConfig (sqlite in-memory).
 
 import pytest
 
-from app import create_app
-from app.extensions import db as _db
+from apps import create_app
+from apps.extensions import db as _db
 
 
 @pytest.fixture

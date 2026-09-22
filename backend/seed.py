@@ -9,8 +9,8 @@ Run with:  python seed.py
 
 from datetime import datetime, timedelta
 
-from app import create_app
-from app.extensions import db
+from apps import create_app
+from apps.extensions import db
 from models import (
     User, UserRole,
     OpportunityCategory,

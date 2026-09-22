@@ -9,7 +9,7 @@ import logging
 from flask import Flask, jsonify
 
 from config import config_by_name
-from app.extensions import db, migrate, jwt, cors, limiter
+from apps.extensions import db, migrate, jwt, cors, limiter
 
 
 def create_app(config_name=None):
@@ -41,10 +41,10 @@ def _init_extensions(app):
 
 
 def _register_blueprints(app):
-    from app.blueprints.auth.routes import auth_bp
-    from app.blueprints.opportunities.routes import opportunities_bp
-    from app.blueprints.saved.routes import saved_bp
-    from app.blueprints.admin.routes import admin_bp
+    from apps.blueprints.auth.routes import auth_bp
+    from apps.blueprints.opportunities.routes import opportunities_bp
+    from apps.blueprints.saved.routes import saved_bp
+    from apps.blueprints.admin.routes import admin_bp
 
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
     app.register_blueprint(opportunities_bp, url_prefix="/api/opportunities")
@@ -72,7 +72,7 @@ def _register_error_handlers(app):
 
 
 def _register_cli(app):
-    from app.cli import register_commands
+    from apps.cli import register_commands
     register_commands(app)
 
 

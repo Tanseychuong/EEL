@@ -28,7 +28,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy import Index
 from werkzeug.security import generate_password_hash, check_password_hash
 
-from app.extensions import db
+from apps.extensions import db
 
 # How long free users wait after an opportunity is approved before they see
 # it. Premium users see it immediately at approval. Also exposed as

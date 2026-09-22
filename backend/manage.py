@@ -13,7 +13,7 @@ the full set of built-in + extension + custom commands with the app
 context already handled, so nothing here needs FLASK_APP set separately.
 """
 
-from app import create_app
+from apps import create_app
 
 app = create_app()
 

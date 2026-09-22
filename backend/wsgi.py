@@ -8,6 +8,6 @@ Redis-backed rather than in-memory once you deploy — in-memory state isn't
 shared across worker processes.
 """
 
-from app import create_app
+from apps import create_app
 
 app = create_app(config_name="production")
