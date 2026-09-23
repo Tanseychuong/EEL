@@ -37,7 +37,7 @@ This maps directly onto `models.py` already: `User.role` (USER/ADMIN) and `User.
 
 ```
 backend/
-├── app/
+├── apps/
 │   ├── __init__.py            # factory (needs pushing)
 │   ├── extensions.py          # ✅ done
 │   ├── models.py              # ✅ done
@@ -45,26 +45,32 @@ backend/
 │   ├── permissions.py         # NEW — role/premium decorators, shared across blueprints
 │   ├── pagination.py          # NEW — one helper: paginate(query, schema) -> dict, used by every list endpoint
 │   │
-│   ├── blueprints/
+│   ├── accounts/
 │   │   ├── auth/
 │   │   │   ├── __init__.py
 │   │   │   ├── routes.py          # /register /login /refresh /me
 │   │   │   └── schemas.py         # marshmallow: RegisterSchema, LoginSchema
 │   │   │
-│   │   ├── opportunities/         # RENAME from content/ — public-facing CRUD + browsing
-│   │   │   ├── __init__.py
-│   │   │   ├── routes.py          # GET list (role-aware), GET one, POST submit, PATCH own-pending, DELETE own-pending
-│   │   │   ├── schemas.py         # OpportunitySchema, OpportunityCreateSchema
-│   │   │   └── services.py        # NEW — business logic (visibility rules, submission validation) kept out of routes.py
+│   ├── opportunities/         # RENAME from content/ — public-facing CRUD + browsing
+│   │   ├── __init__.py
+│   │   ├── routes.py          # GET list (role-aware), GET one, POST submit, PATCH own-pending, DELETE own-pending
+│   │   ├── routes.py          # GET list (role-aware), GET one, POST submit, PATCH own-pending, DELETE own-pending
+│   │   ├── routes.py          # GET list (role-aware), GET one, POST submit, PATCH own-pending, DELETE own-pending
+│   │   ├── routes.py          # GET list (role-aware), GET one, POST submit, PATCH own-pending, DELETE own-pending
+│   │   ├── schemas.py         # OpportunitySchema, OpportunityCreateSchema
+│   │   └── services.py        # NEW — business logic (visibility rules, submission validation) kept out of routes.py
 │   │   │
-│   │   ├── saved/                 # NEW — split out of the old progress/ folder
-│   │   │   ├── __init__.py
-│   │   │   └── routes.py          # POST/DELETE save, GET my-saved
+│   ├── ingestion/                 # NEW — split out of the old progress/ folder
+│   │   ├── __init__.py
+│   │   ├── __init__.py
+│   │   ├── __init__.py
+│   │   ├── __init__.py
+│   │   └── routes.py          # POST/DELETE save, GET my-saved
 │   │   │
-│   │   └── admin/
-│   │       ├── __init__.py
-│   │       ├── routes.py          # moderation queue, approve/reject, category CRUD, user mgmt
-│   │       └── schemas.py
+│   └── docs/
+│   │   ├── __init__.py
+│   │   ├── routes.py          # moderation queue, approve/reject, category CRUD, user mgmt
+│   │   └── schemas.py
 │   │
 ├── migrations/                # Flask-Migrate (run `flask db init` once __init__.py is live)
 ├── tests/
@@ -72,10 +78,12 @@ backend/
 │   ├── test_auth.py
 │   ├── test_opportunities.py
 │   └── test_admin.py
-├── config.py                   # ✅ done
+├── config/                         # ✅ done
+│   ├── __init__.py                 # ✅ done 
+│   ├── wsgi.py                     # ✅ done
+│   ├── seed.py                     # ✅ done
+│   └── urls.py
 ├── manage.py                   # ✅ done
-├── wsgi.py                     # ✅ done
-├── seed.py                     # ✅ done
 ├── requirements.txt            # ✅ done (add pytest, pytest-flask for the tests/ folder)
 └── .env.example                # needs pushing
 ```
