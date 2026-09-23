@@ -9,12 +9,12 @@
 ```
 backend/
 ├── apps/
-│   ├── __init__.py            # factory (needs pushing)
+│   ├── __init__.py           
 │   │
 │   ├── accounts/
 │   │   ├── __init__.py
 │   │   ├── admin.py
-│   │   ├── forms.py          # /register /login /refresh /me
+│   │   ├── forms.py          
 │   │   ├── models.py
 │   │   ├── serializer.py
 │   │   ├── urls.py
@@ -47,11 +47,11 @@ backend/
 │   │   │       └── rss_connector.py
 │   │   └── migrations/ 
 │   │
-├── config/                         # ✅ done
-│   ├── __init__.py                 # ✅ done 
-│   ├── wsgi.py                     # ✅ done
-│   ├── settings.py                 # ✅ done
-│   ├── asgi.py.py                  # ✅ done
+├── config/                         
+│   ├── __init__.py                
+│   ├── wsgi.py                     
+│   ├── settings.py                 
+│   ├── asgi.py.py                  
 │   └── urls.py  
 ├── docs/
 │   ├── accounts.md
@@ -62,11 +62,11 @@ backend/
 │   │
 ├── migrations/ 
 ├── tests/
-│   ├── conftest.py             # NEW — app fixture using TestingConfig + sqlite
+│   ├── conftest.py             # 
 │   ├── test_auth.py
 │   ├── test_opportunities.py
 │   └── test_admin.py
-├── manage.py                   # ✅ done
-├── requirements.txt            # ✅ done (add pytest, pytest-flask for the tests/ folder)
-└── .env.example                # needs pushing
+├── manage.py                   #
+├── requirements.txt            # 
+└── .env.example                # 
 ```
