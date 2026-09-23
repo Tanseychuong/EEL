@@ -1,0 +1,28 @@
+# --- Environment / secrets --------------------------------------------------
+.env
+.env.*
+!.env.example
+
+# --- Python / Django ---------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.Python
+venv/
+env/
+.venv/
+*.sqlite3
+db.sqlite3
+staticfiles/
+
+# --- Node / React / Vite ------------------------------------------------------
+node_modules/
+dist/
+.vite/
+npm-debug.log*
+
+# --- OS / editor -------------------------------------------------------------
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
