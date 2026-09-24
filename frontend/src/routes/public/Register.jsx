@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { LogIn, Mail, Lock, AlertCircle } from 'lucide-react';
+import { UserPlus, User, Mail, Lock, AlertCircle } from 'lucide-react';
 
-export const Login = () => {
-  const { login } = useAuth();
+export const Register = () => {
+  const { register } = useAuth();
   const navigate = useNavigate();
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState(null);
@@ -16,10 +17,10 @@ export const Login = () => {
     setError(null);
     setSubmitting(true);
     try {
-      await login(email, password);
+      await register(name, email, password);
       navigate('/opportunities');
     } catch (err) {
-      setError(err.message || 'Login failed. Please verify credentials.');
+      setError(err.message || 'Registration failed.');
     } finally {
       setSubmitting(false);
     }
@@ -27,10 +28,10 @@ export const Login = () => {
 
   return (
     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 'calc(100vh - 120px)', padding: '24px' }}>
-      <div className="glass-panel" style={{ width: '100%', maxWidth: '420px', padding: '36px' }}>
+      <div className="glass-panel" style={{ width: '100%', maxWidth: '440px', padding: '36px' }}>
         <div style={{ textAlign: 'center', marginBottom: '28px' }}>
-          <h2 style={{ fontSize: '1.8rem', fontWeight: 700, marginBottom: '8px' }}>Welcome Back</h2>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>Sign in to access your saved opportunities and submissions.</p>
+          <h2 style={{ fontSize: '1.8rem', fontWeight: 700, marginBottom: '8px' }}>Create an Account</h2>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>Join the portal to save and submit verified opportunities.</p>
         </div>
 
         {error && (
@@ -39,7 +40,23 @@ export const Login = () => {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '6px' }}>Full Name</label>
+            <div style={{ position: 'relative' }}>
+              <User size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+              <input
+                type="text"
+                required
+                className="input-field"
+                placeholder="Jane Doe"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                style={{ paddingLeft: '40px' }}
+              />
+            </div>
+          </div>
+
           <div>
             <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '6px' }}>Email Address</label>
             <div style={{ position: 'relative' }}>
@@ -64,7 +81,7 @@ export const Login = () => {
                 type="password"
                 required
                 className="input-field"
-                placeholder="••••••••"
+                placeholder="Minimum 8 characters"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 style={{ paddingLeft: '40px' }}
@@ -73,14 +90,14 @@ export const Login = () => {
           </div>
 
           <button type="submit" disabled={submitting} className="btn-primary" style={{ width: '100%', marginTop: '8px' }}>
-            {submitting ? 'Authenticating...' : 'Sign In'} <LogIn size={18} />
+            {submitting ? 'Creating Account...' : 'Sign Up'} <UserPlus size={18} />
           </button>
         </form>
 
         <p style={{ textAlign: 'center', marginTop: '24px', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
-          Don't have an account?{' '}
-          <Link to="/register" style={{ color: '#818cf8', fontWeight: 600, textDecoration: 'none' }}>
-            Create Account
+          Already have an account?{' '}
+          <Link to="/login" style={{ color: '#818cf8', fontWeight: 600, textDecoration: 'none' }}>
+            Sign In
           </Link>
         </p>
       </div>

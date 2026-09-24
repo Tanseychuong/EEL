@@ -71,7 +71,7 @@ class OpportunityViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], permission_classes=[CanVerifyOpportunity])
     def approve(self, request, pk=None):
-        opportunity = Opportunity.objects.get(pk=pk)
+        opportunity = self.get_object()
         approve_opportunity(opportunity, request.user)
         return Response(OpportunitySerializer(opportunity, context=self.get_serializer_context()).data)
 
@@ -79,7 +79,7 @@ class OpportunityViewSet(viewsets.ModelViewSet):
     def reject(self, request, pk=None):
         serializer = OpportunityRejectSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        opportunity = Opportunity.objects.get(pk=pk)
+        opportunity = self.get_object()
         reject_opportunity(opportunity, request.user, serializer.validated_data["reason"])
         return Response(OpportunitySerializer(opportunity, context=self.get_serializer_context()).data)
 
@@ -87,7 +87,7 @@ class OpportunityViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], permission_classes=[permissions.IsAuthenticated])
     def save(self, request, pk=None):
-        opportunity = Opportunity.objects.get(pk=pk)
+        opportunity = self.get_object()
         SavedOpportunity.objects.get_or_create(user=request.user, opportunity=opportunity)
         return Response(status=status.HTTP_201_CREATED)
 
