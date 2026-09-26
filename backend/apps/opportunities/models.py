@@ -148,14 +148,10 @@ class SavedOpportunity(models.Model):
     saved_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        ordering = ["-saved_at"]
         constraints = [
             models.UniqueConstraint(fields=["user", "opportunity"], name="uq_saved_user_opportunity")
         ]
 
     def __str__(self):
         return f"{self.user} saved {self.opportunity}"
-class Meta:
-        ordering = ["-saved_at"]
-        constraints = [
-            models.UniqueConstraint(fields=["user", "opportunity"], name="uq_saved_user_opportunity")
-        ]
