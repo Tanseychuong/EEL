@@ -154,3 +154,6 @@ class SavedOpportunity(models.Model):
 
     def __str__(self):
         return f"{self.user} saved {self.opportunity}"
+class Meta:
+    ordering = ["-saved_at"]
+    constraints = []
