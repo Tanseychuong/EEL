@@ -38,6 +38,13 @@ class OpportunityViewSet(viewsets.ModelViewSet):
             # Editing only ever allowed on your own still-pending submissions.
             return Opportunity.objects.filter(posted_by=user, status=Opportunity.Status.PENDING)
 
+        if self.action in ("approve", "reject"):
+            # CanVerifyOpportunity already restricts who reaches this action
+            # at all — a moderator specifically needs to look up PENDING
+            # (not-yet-visible) items, which the visibility filter below
+            # would otherwise exclude.
+            return Opportunity.objects.all()
+
         if self.action == "retrieve":
             # Visible under the normal rule, OR it's your own submission
             # regardless of moderation status (so you can check on it).
