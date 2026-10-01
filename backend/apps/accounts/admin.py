@@ -25,7 +25,7 @@ class UserAdmin(BaseUserAdmin):
 
     fieldsets = (
         (None, {"fields": ("email", "password")}),
-        ("Personal info", {"fields": ("name",)}),
+        ("Personal info", {"fields": ("name", "profile_picture")}),
         ("Premium", {"fields": ("is_premium", "premium_expires_at")}),
         (
             "Permissions",

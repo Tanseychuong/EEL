@@ -13,7 +13,7 @@ class UserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ["id", "name", "email", "is_premium_active", "role", "created_at"]
+        fields = ["id", "name", "email", "profile_picture", "is_premium_active", "role", "created_at"]
         read_only_fields = fields
 
     def get_is_premium_active(self, obj) -> bool:
@@ -25,6 +25,22 @@ class UserSerializer(serializers.ModelSerializer):
         if obj.is_moderator():
             return "moderator"
         return "user"
+
+
+class UserUpdateSerializer(serializers.ModelSerializer):
+    """Write serializer for a user editing their own profile — deliberately
+    excludes email, password, role/premium fields. Those go through their
+    own dedicated flows (email is the login identity, password has its own
+    change flow, role/premium are admin-only)."""
+
+    class Meta:
+        model = User
+        fields = ["name", "profile_picture"]
+
+    def validate_name(self, value):
+        if not value.strip():
+            raise serializers.ValidationError("Name cannot be blank.")
+        return value.strip()
 
 
 class RegisterSerializer(serializers.ModelSerializer):

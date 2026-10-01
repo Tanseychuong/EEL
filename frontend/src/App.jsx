@@ -5,6 +5,7 @@ import { Navbar } from './components/navbar/Navbar';
 import { OpportunitiesFeed } from './routes/learner/OpportunitiesFeed';
 import { SubmitOpportunity } from './routes/learner/SubmitOpportunity';
 import { SavedOpportunities } from './routes/learner/SavedOpportunities';
+import { Profile } from './routes/learner/Profile';
 import { Login } from './routes/public/Login';
 import { Register } from './routes/public/Register';
 import { ModerationQueue } from './routes/admin/ModerationQueue';
@@ -60,6 +61,14 @@ export function App() {
                 element={
                   <ProtectedRoute>
                     <SavedOpportunities />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/profile"
+                element={
+                  <ProtectedRoute>
+                    <Profile />
                   </ProtectedRoute>
                 }
               />

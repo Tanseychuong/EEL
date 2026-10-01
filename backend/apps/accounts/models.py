@@ -37,6 +37,7 @@ class UserManager(BaseUserManager):
 class User(AbstractBaseUser, PermissionsMixin):
     name = models.CharField(max_length=120)
     email = models.EmailField(unique=True)
+    profile_picture = models.ImageField(upload_to="profile_pics/", null=True, blank=True)
 
     # is_staff/is_superuser come from PermissionsMixin and control Django
     # admin access + full permissions — is_staff is what makes someone able

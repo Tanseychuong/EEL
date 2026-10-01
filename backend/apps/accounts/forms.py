@@ -19,4 +19,4 @@ class UserCreationForm(BaseUserCreationForm):
 class UserChangeForm(BaseUserChangeForm):
     class Meta(BaseUserChangeForm.Meta):
         model = User
-        fields = ("email", "name", "is_premium", "premium_expires_at")
+        fields = ("email", "name", "profile_picture", "is_premium", "premium_expires_at")
