@@ -57,7 +57,7 @@ export const Profile = () => {
 
   return (
     <div style={{ maxWidth: '560px', margin: '36px auto', padding: '0 24px' }}>
-      <div className="glass-panel" style={{ padding: '36px' }}>
+      <div className="glass-card" style={{ padding: '36px' }}>
         <h2 style={{ fontSize: '1.8rem', fontWeight: 700, marginBottom: '8px' }}>
           Your <span className="gradient-text">Profile</span>
         </h2>

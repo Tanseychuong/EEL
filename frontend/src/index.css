@@ -1,18 +1,37 @@
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500&family=Karla:wght@400;500;600;700&display=swap');
 
-:root {
-  --bg-color: #0d1117;
-  --bg-card: rgba(22, 27, 34, 0.85);
-  --bg-card-hover: rgba(30, 38, 48, 0.95);
-  --accent-primary: #6366f1;
-  --accent-purple: #a855f7;
-  --accent-emerald: #10b981;
-  --accent-amber: #f59e0b;
-  --text-main: #f0f6fc;
-  --text-muted: #8b949e;
-  --text-subtle: #6e7681;
-  --border-subtle: rgba(255, 255, 255, 0.08);
-  --border-focus: rgba(99, 102, 241, 0.4);
+/* Dark is the default palette (forest-at-night); [data-theme="light"] overrides
+   below. data-theme is set by ThemeContext before paint (see index.html's
+   inline script), so there's no flash of the wrong theme on load. */
+:root,
+:root[data-theme="dark"] {
+  --bg-color: #121a14;
+  --bg-card: rgba(28, 39, 30, 0.78);
+  --bg-card-hover: rgba(34, 47, 36, 0.9);
+  --accent-primary: #6b8f71;   /* sage */
+  --accent-secondary: #8fb4c4; /* sky */
+  --accent-gold: #c9a24b;      /* meadow gold */
+  --bark: #c99a6c;
+  --text-main: #e7efe7;
+  --text-muted: #9fb3a2;
+  --text-subtle: #7a8c7d;
+  --border-subtle: rgba(191, 224, 196, 0.12);
+  --border-focus: rgba(107, 143, 113, 0.45);
+}
+
+:root[data-theme="light"] {
+  --bg-color: #eff2ea;
+  --bg-card: rgba(255, 255, 255, 0.68);
+  --bg-card-hover: rgba(255, 255, 255, 0.88);
+  --accent-primary: #4c6b52;   /* deeper moss, for contrast on light bg */
+  --accent-secondary: #4f7991; /* deeper sky */
+  --accent-gold: #a97f2e;      /* deeper gold */
+  --bark: #8a5a34;
+  --text-main: #24362a;
+  --text-muted: #5c6f5f;
+  --text-subtle: #7c8c7e;
+  --border-subtle: rgba(47, 74, 53, 0.14);
+  --border-focus: rgba(76, 107, 82, 0.35);
 }
 
 * {
@@ -22,50 +41,55 @@
 }
 
 body {
-  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: 'Karla', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   background-color: var(--bg-color);
-  background-image: 
-    radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.08) 0px, transparent 50%),
-    radial-gradient(at 100% 100%, rgba(168, 85, 247, 0.08) 0px, transparent 50%);
+  background-image:
+    radial-gradient(at 0% 0%, color-mix(in srgb, var(--accent-primary) 10%, transparent) 0px, transparent 55%),
+    radial-gradient(at 100% 100%, color-mix(in srgb, var(--accent-secondary) 10%, transparent) 0px, transparent 55%);
   background-attachment: fixed;
   color: var(--text-main);
   min-height: 100vh;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
-/* Minimalist Glass Card */
-.glass-card {
+h1, h2, h3, h4 {
+  font-family: 'Fraunces', serif;
+  font-weight: 600;
+}
+
+/* Soft, rounded "glass" surface — the shared card/panel look across the app */
+.glass-card, .glass-panel {
   background: var(--bg-card);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--border-subtle);
-  border-radius: 12px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  border-radius: 20px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12);
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease;
 }
 
 .glass-card:hover {
   background: var(--bg-card-hover);
-  border-color: rgba(255, 255, 255, 0.15);
+  border-color: color-mix(in srgb, var(--accent-primary) 30%, var(--border-subtle));
   transform: translateY(-2px);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.16);
 }
 
-/* Minimalist Typography Gradients */
 .gradient-text {
-  background: linear-gradient(135deg, #a5b4fc 0%, #c084fc 100%);
+  background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
-/* Clean Buttons */
+/* Pill-shaped buttons — the one clearly organic shape carried through the UI */
 .btn-primary {
-  background: linear-gradient(135deg, #6366f1 0%, #7c3aed 100%);
+  background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
   color: #ffffff;
-  font-weight: 600;
-  padding: 9px 18px;
-  border-radius: 8px;
+  font-weight: 700;
+  padding: 10px 20px;
+  border-radius: 999px;
   border: none;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -74,20 +98,19 @@ body {
   justify-content: center;
   gap: 8px;
   font-size: 0.9rem;
+  font-family: 'Karla', sans-serif;
 }
 
-.btn-primary:hover {
-  opacity: 0.92;
-  transform: translateY(-1px);
-}
+.btn-primary:hover { opacity: 0.92; transform: translateY(-1px); }
+.btn-primary:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
 
 .btn-secondary {
-  background: rgba(255, 255, 255, 0.05);
+  background: color-mix(in srgb, var(--text-main) 5%, transparent);
   color: var(--text-main);
   border: 1px solid var(--border-subtle);
-  font-weight: 500;
-  padding: 9px 18px;
-  border-radius: 8px;
+  font-weight: 600;
+  padding: 10px 20px;
+  border-radius: 999px;
   cursor: pointer;
   transition: all 0.15s ease;
   display: inline-flex;
@@ -95,83 +118,97 @@ body {
   justify-content: center;
   gap: 8px;
   font-size: 0.9rem;
+  font-family: 'Karla', sans-serif;
 }
 
 .btn-secondary:hover {
-  background: rgba(255, 255, 255, 0.09);
-  border-color: rgba(255, 255, 255, 0.18);
+  background: color-mix(in srgb, var(--text-main) 9%, transparent);
+  border-color: color-mix(in srgb, var(--accent-primary) 30%, var(--border-subtle));
 }
 
-/* Crisp Minimalist Badges */
+/* Theme toggle — round, quiet, lives in the navbar */
+.theme-toggle {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 1px solid var(--border-subtle);
+  background: color-mix(in srgb, var(--text-main) 5%, transparent);
+  color: var(--text-main);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.theme-toggle:hover {
+  background: color-mix(in srgb, var(--accent-primary) 15%, transparent);
+  border-color: color-mix(in srgb, var(--accent-primary) 35%, var(--border-subtle));
+  transform: rotate(-8deg);
+}
+
 .badge {
   display: inline-flex;
   align-items: center;
-  padding: 3px 10px;
-  border-radius: 6px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
+  padding: 4px 11px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
 
 .badge-category {
-  background: rgba(99, 102, 241, 0.12);
-  color: #a5b4fc;
-  border: 1px solid rgba(99, 102, 241, 0.25);
+  background: color-mix(in srgb, var(--accent-secondary) 16%, transparent);
+  color: var(--accent-secondary);
+  border: 1px solid color-mix(in srgb, var(--accent-secondary) 32%, transparent);
 }
 
 .badge-premium {
-  background: rgba(168, 85, 247, 0.15);
-  color: #d8b4fe;
-  border: 1px solid rgba(168, 85, 247, 0.3);
+  background: color-mix(in srgb, var(--accent-gold) 18%, transparent);
+  color: var(--accent-gold);
+  border: 1px solid color-mix(in srgb, var(--accent-gold) 35%, transparent);
 }
 
 .badge-pending {
-  background: rgba(245, 158, 11, 0.12);
-  color: #fde047;
-  border: 1px solid rgba(245, 158, 11, 0.3);
+  background: color-mix(in srgb, var(--bark) 18%, transparent);
+  color: var(--bark);
+  border: 1px solid color-mix(in srgb, var(--bark) 35%, transparent);
 }
 
 .badge-approved {
-  background: rgba(16, 185, 129, 0.12);
-  color: #6ee7b7;
-  border: 1px solid rgba(16, 185, 129, 0.3);
+  background: color-mix(in srgb, var(--accent-primary) 16%, transparent);
+  color: var(--accent-primary);
+  border: 1px solid color-mix(in srgb, var(--accent-primary) 32%, transparent);
 }
 
-/* Minimalist Inputs */
 .input-field {
   width: 100%;
-  background: rgba(22, 27, 34, 0.7);
+  background: color-mix(in srgb, var(--bg-color) 60%, transparent);
   border: 1px solid var(--border-subtle);
-  border-radius: 8px;
-  padding: 10px 14px;
+  border-radius: 14px;
+  padding: 11px 16px;
   color: var(--text-main);
   font-size: 0.925rem;
-  font-family: inherit;
+  font-family: 'Karla', sans-serif;
   outline: none;
   transition: all 0.15s ease;
 }
 
 .input-field:focus {
   border-color: var(--accent-primary);
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-primary) 22%, transparent);
 }
 
-/* Custom Scrollbar */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--bg-color); }
+::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--accent-primary) 30%, transparent); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--accent-primary) 45%, transparent); }
+
+/* Visible keyboard focus everywhere, not just inputs */
+a:focus-visible, button:focus-visible, [tabindex]:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
 }
 
-::-webkit-scrollbar-track {
-  background: var(--bg-color);
-}
-
-::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.22);
+@media (prefers-reduced-motion: reduce) {
+  * { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
 }

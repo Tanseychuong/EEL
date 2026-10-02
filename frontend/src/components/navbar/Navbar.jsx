@@ -1,10 +1,12 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { Compass, Bookmark, PlusCircle, Shield, LogOut, User, Sparkles } from 'lucide-react';
+import { useTheme } from '../../context/ThemeContext';
+import { Compass, Bookmark, PlusCircle, Shield, LogOut, User, Sparkles, Sun, Moon } from 'lucide-react';
 
 export const Navbar = () => {
   const { user, isAuthenticated, isPremium, isModerator, logout } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
 
   const handleLogout = () => {
@@ -13,13 +15,13 @@ export const Navbar = () => {
   };
 
   return (
-    <nav className="glass-panel" style={{ borderRadius: 0, borderTop: 0, borderLeft: 0, borderRight: 0, position: 'sticky', top: 0, zIndex: 100 }}>
+    <nav className="glass-card" style={{ borderRadius: 0, borderTop: 0, borderLeft: 0, borderRight: 0, position: 'sticky', top: 0, zIndex: 100 }}>
       <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '14px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <Link to="/" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div style={{ background: 'linear-gradient(135deg, #6366f1, #a855f7)', width: '36px', height: '36px', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 'bold' }}>
+          <div style={{ background: 'linear-gradient(135deg, var(--accent-primary), var(--accent-secondary))', width: '36px', height: '36px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 'bold', fontFamily: "'Fraunces', serif" }}>
             E
           </div>
-          <span className="gradient-text" style={{ fontSize: '1.4rem', fontWeight: 700 }}>EEL Portal</span>
+          <span className="gradient-text" style={{ fontSize: '1.4rem', fontWeight: 700, fontFamily: "'Fraunces', serif" }}>EEL Portal</span>
         </Link>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
@@ -39,10 +41,19 @@ export const Navbar = () => {
           )}
 
           {isModerator && (
-            <Link to="/admin/moderation" style={{ color: '#fcd34d', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.95rem', background: 'rgba(245, 158, 11, 0.15)', padding: '6px 12px', borderRadius: '8px', border: '1px solid rgba(245, 158, 11, 0.3)' }}>
+            <Link to="/admin/moderation" style={{ color: 'var(--accent-gold)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.95rem', background: 'color-mix(in srgb, var(--accent-gold) 15%, transparent)', padding: '6px 14px', borderRadius: '999px', border: '1px solid color-mix(in srgb, var(--accent-gold) 30%, transparent)' }}>
               <Shield size={18} /> Moderation Queue
             </Link>
           )}
+
+          <button
+            onClick={toggleTheme}
+            className="theme-toggle"
+            aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          >
+            {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
+          </button>
 
           {isAuthenticated ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', paddingLeft: '12px', borderLeft: '1px solid var(--border-subtle)' }}>
